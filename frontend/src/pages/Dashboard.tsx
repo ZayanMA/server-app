@@ -1,3 +1,4 @@
+import { AlertTriangle, Clock, Cpu, HardDrive, MemoryStick, ServerOff } from "lucide-react";
 import { useEffect, useState } from "react";
 import { ApiError, getPowerStatus, getStats, shutdownServer, wakeServer, type TargetStats } from "../api";
 import { GaugeCard } from "../components/GaugeCard";
@@ -87,15 +88,19 @@ export function Dashboard() {
   const memoryPercent = stats ? (stats.memory.used / stats.memory.total) * 100 : 0;
 
   return (
-    <div className="mx-auto min-h-screen max-w-2xl px-4 py-8">
-      <header className="mb-8">
-        <h1 className="text-xl font-semibold text-slate-100">Server Control</h1>
-        <div className="mt-1">
-          <StatusBadge online={online} />
+    <div className="mx-auto min-h-screen max-w-2xl px-4 pb-12 pt-[max(2rem,env(safe-area-inset-top))]">
+      <header className="mb-8 flex items-center justify-between">
+        <div>
+          <h1 className="bg-gradient-to-r from-slate-100 to-slate-300 bg-clip-text text-2xl font-bold tracking-tight text-transparent">
+            Server Control
+          </h1>
+          <div className="mt-2">
+            <StatusBadge online={online} />
+          </div>
         </div>
       </header>
 
-      <div className="mb-8 grid grid-cols-2 gap-4">
+      <div className="mb-8 grid grid-cols-2 gap-3">
         <PowerButton action="wake" disabled={online === true} busy={busyAction === "wake"} onClick={handleWake} />
         <PowerButton
           action="shutdown"
@@ -105,43 +110,52 @@ export function Dashboard() {
         />
       </div>
 
-      {error && <p className="mb-6 text-sm text-red-400">{error}</p>}
+      {error && (
+        <div className="animate-fade-in mb-6 flex items-center gap-2 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          {error}
+        </div>
+      )}
 
       {online && stats && (
-        <>
-          <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-3">
-            <GaugeCard label="CPU" percent={stats.cpuPercent} detail={`${stats.cpuPercent}% used`} />
+        <div className="animate-fade-in">
+          <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <GaugeCard icon={Cpu} label="CPU" percent={stats.cpuPercent} detail={`${stats.cpuPercent}% used`} />
             <GaugeCard
+              icon={MemoryStick}
               label="Memory"
               percent={memoryPercent}
               detail={`${formatBytes(stats.memory.used)} / ${formatBytes(stats.memory.total)}`}
             />
-            {stats.disks.map((disk) =>
-              disk.mounted ? (
-                <GaugeCard
-                  key={disk.device}
-                  label={disk.device}
-                  percent={(disk.usedBytes / disk.sizeBytes) * 100}
-                  detail={`${formatBytes(disk.usedBytes)} / ${formatBytes(disk.sizeBytes)}${disk.model ? ` · ${disk.model}` : ""}`}
-                />
-              ) : (
-                <GaugeCard
-                  key={disk.device}
-                  label={disk.device}
-                  percent={0}
-                  detail={`Not mounted · ${formatBytes(disk.sizeBytes)}${disk.model ? ` · ${disk.model}` : ""}`}
-                />
-              ),
-            )}
+            {stats.disks.map((disk) => (
+              <GaugeCard
+                key={disk.device}
+                icon={HardDrive}
+                label={disk.device}
+                percent={disk.mounted ? (disk.usedBytes / disk.sizeBytes) * 100 : 0}
+                muted={!disk.mounted}
+                detail={
+                  disk.mounted
+                    ? `${formatBytes(disk.usedBytes)} / ${formatBytes(disk.sizeBytes)}`
+                    : `Not mounted · ${formatBytes(disk.sizeBytes)}`
+                }
+              />
+            ))}
           </div>
-          <p className="text-center text-sm text-slate-500">Uptime: {formatUptime(stats.uptimeSeconds)}</p>
-        </>
+          <p className="flex items-center justify-center gap-1.5 text-xs text-slate-500">
+            <Clock className="h-3.5 w-3.5" />
+            Up {formatUptime(stats.uptimeSeconds)}
+          </p>
+        </div>
       )}
 
       {online === false && (
-        <p className="text-center text-sm text-slate-500">
-          Server is offline. Hit "Wake Server" to boot it.
-        </p>
+        <div className="animate-fade-in flex flex-col items-center gap-3 rounded-2xl border border-white/[0.06] bg-white/[0.02] py-14 text-center">
+          <ServerOff className="h-8 w-8 text-slate-600" />
+          <p className="text-sm text-slate-500">
+            Server is offline. Hit <span className="text-slate-300">Wake Server</span> to boot it.
+          </p>
+        </div>
       )}
     </div>
   );
