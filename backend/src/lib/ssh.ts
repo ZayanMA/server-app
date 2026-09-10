@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { NodeSSH } from "node-ssh";
 import { config } from "../config.js";
+import { isPortOpen, pingTarget } from "./health.js";
 
 const CONNECT_TIMEOUT_MS = 5000;
 
@@ -28,13 +29,26 @@ async function withConnection<T>(fn: (ssh: NodeSSH) => Promise<T>): Promise<T> {
   }
 }
 
-/** Whether the target server is currently reachable over SSH. */
-export async function isTargetOnline(): Promise<boolean> {
+export type PowerPhase = "offline" | "booting" | "starting" | "online";
+
+/**
+ * Boot progress, cheapest signal first: a WoL'd machine responds to ping
+ * (kernel + network up) well before its SSH daemon is listening, which in
+ * turn comes up before our key is actually accepted (host keys, PAM, etc.
+ * still settling). Each stage only runs if the previous one already passed.
+ */
+export async function getPowerPhase(): Promise<PowerPhase> {
+  const portOpen = await isPortOpen(config.target.host, config.target.sshPort);
+  if (!portOpen) {
+    const pingOk = await pingTarget(config.target.host);
+    return pingOk ? "booting" : "offline";
+  }
+
   try {
     await withConnection(async () => true);
-    return true;
+    return "online";
   } catch {
-    return false;
+    return "starting";
   }
 }
 

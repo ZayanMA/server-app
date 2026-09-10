@@ -24,7 +24,9 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-export function getPowerStatus(): Promise<{ online: boolean }> {
+export type PowerPhase = "offline" | "booting" | "starting" | "online";
+
+export function getPowerStatus(): Promise<{ phase: PowerPhase }> {
   return request("/power/status");
 }
 

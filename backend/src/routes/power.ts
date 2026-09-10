@@ -1,14 +1,14 @@
 import { Router } from "express";
 import { config } from "../config.js";
-import { isTargetOnline, shutdownTarget } from "../lib/ssh.js";
+import { getPowerPhase, shutdownTarget } from "../lib/ssh.js";
 import { sendMagicPacket } from "../lib/wol.js";
 import { logger } from "../lib/logger.js";
 
 export const powerRouter = Router();
 
 powerRouter.get("/status", async (_req, res) => {
-  const online = await isTargetOnline();
-  res.json({ online });
+  const phase = await getPowerPhase();
+  res.json({ phase });
 });
 
 powerRouter.post("/wake", async (_req, res) => {

@@ -1,38 +1,49 @@
-import { AlertTriangle, Clock, Cpu, MemoryStick, ServerOff } from "lucide-react";
+import { AlertTriangle, Clock, Cpu, MemoryStick } from "lucide-react";
 import { useEffect, useState } from "react";
-import { ApiError, getPowerStatus, getStats, shutdownServer, wakeServer, type TargetStats } from "../api";
+import { ApiError, getPowerStatus, getStats, shutdownServer, wakeServer, type PowerPhase, type TargetStats } from "../api";
+import { BootProgress } from "../components/BootProgress";
 import { DiskRow } from "../components/DiskRow";
 import { GaugeCard } from "../components/GaugeCard";
 import { PowerButton } from "../components/PowerButton";
 import { StatusBadge } from "../components/StatusBadge";
 import { formatBytes, formatUptime } from "../format";
 
-const STATUS_POLL_MS = 5000;
+// Fast polling while something is actively changing (booting up), slower
+// once settled (steady online or offline) so we're not hammering the target.
+const ACTIVE_POLL_MS = 1500;
+const IDLE_POLL_MS = 5000;
 const STATS_POLL_MS = 5000;
 
 export function Dashboard() {
-  const [online, setOnline] = useState<boolean | null>(null);
+  const [phase, setPhase] = useState<PowerPhase | null>(null);
   const [stats, setStats] = useState<TargetStats | null>(null);
   const [busyAction, setBusyAction] = useState<"wake" | "shutdown" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const online = phase === "online";
+
   useEffect(() => {
     let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
 
     async function poll() {
       try {
         const result = await getPowerStatus();
-        if (!cancelled) setOnline(result.online);
+        if (cancelled) return;
+        setPhase(result.phase);
+        const delay = result.phase === "booting" || result.phase === "starting" ? ACTIVE_POLL_MS : IDLE_POLL_MS;
+        timer = setTimeout(poll, delay);
       } catch {
-        if (!cancelled) setOnline(null);
+        if (cancelled) return;
+        setPhase(null);
+        timer = setTimeout(poll, IDLE_POLL_MS);
       }
     }
 
     poll();
-    const id = setInterval(poll, STATUS_POLL_MS);
     return () => {
       cancelled = true;
-      clearInterval(id);
+      clearTimeout(timer);
     };
   }, []);
 
@@ -100,16 +111,16 @@ export function Dashboard() {
             Server Control
           </h1>
           <div className="mt-2">
-            <StatusBadge online={online} />
+            <StatusBadge online={phase === null ? null : online} />
           </div>
         </div>
       </header>
 
       <div className="mb-8 grid grid-cols-2 gap-3">
-        <PowerButton action="wake" disabled={online === true} busy={busyAction === "wake"} onClick={handleWake} />
+        <PowerButton action="wake" disabled={online} busy={busyAction === "wake"} onClick={handleWake} />
         <PowerButton
           action="shutdown"
-          disabled={online !== true}
+          disabled={!online}
           busy={busyAction === "shutdown"}
           onClick={handleShutdown}
         />
@@ -167,14 +178,7 @@ export function Dashboard() {
         </div>
       )}
 
-      {online === false && (
-        <div className="animate-fade-in flex flex-col items-center gap-3 rounded-2xl border border-white/[0.06] bg-white/[0.02] py-14 text-center">
-          <ServerOff className="h-8 w-8 text-slate-600" />
-          <p className="text-sm text-slate-500">
-            Server is offline. Hit <span className="text-slate-300">Wake Server</span> to boot it.
-          </p>
-        </div>
-      )}
+      {phase !== null && !online && <BootProgress phase={phase} />}
     </div>
   );
 }
