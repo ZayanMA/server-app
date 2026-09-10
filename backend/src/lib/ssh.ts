@@ -50,15 +50,20 @@ export async function shutdownTarget(): Promise<void> {
 export interface TargetStats {
   cpuPercent: number;
   memory: { total: number; used: number };
-  disks: Array<{ path: string; size: number; used: number; available: number }>;
+  disks: Array<{
+    device: string;
+    model: string;
+    sizeBytes: number;
+    usedBytes: number;
+    availableBytes: number;
+    mounted: boolean;
+  }>;
   uptimeSeconds: number;
 }
 
 export async function getTargetStats(): Promise<TargetStats> {
   return withConnection(async (ssh) => {
-    const result = await ssh.execCommand(
-      `DISK_PATHS="${config.target.statsDiskPaths}" bash ${config.target.statsScriptPath}`,
-    );
+    const result = await ssh.execCommand(`bash ${config.target.statsScriptPath}`);
     if (result.code !== 0) {
       throw new Error(`stats script failed: ${result.stderr || result.stdout}`);
     }

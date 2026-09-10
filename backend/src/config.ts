@@ -12,13 +12,6 @@ export const config = {
   port: Number(process.env.PORT ?? 4000),
   staticDir: process.env.STATIC_DIR,
 
-  auth: {
-    username: required("APP_USERNAME"),
-    passwordHash: required("APP_PASSWORD_HASH"),
-    jwtSecret: required("APP_JWT_SECRET"),
-    jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? "12h",
-  },
-
   target: {
     host: required("TARGET_HOST"),
     macAddress: required("TARGET_MAC_ADDRESS"),
@@ -30,6 +23,5 @@ export const config = {
     sshPrivateKeyPath: required("TARGET_SSH_PRIVATE_KEY_PATH"),
 
     statsScriptPath: process.env.STATS_SCRIPT_PATH ?? "/usr/local/bin/server-app-stats.sh",
-    statsDiskPaths: process.env.STATS_DISK_PATHS ?? "/",
   },
 } as const;

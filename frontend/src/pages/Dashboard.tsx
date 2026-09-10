@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { ApiError, getPowerStatus, getStats, shutdownServer, wakeServer, type TargetStats } from "../api";
 import { GaugeCard } from "../components/GaugeCard";
 import { PowerButton } from "../components/PowerButton";
@@ -8,26 +8,11 @@ import { formatBytes, formatUptime } from "../format";
 const STATUS_POLL_MS = 5000;
 const STATS_POLL_MS = 5000;
 
-interface DashboardProps {
-  onLogout: () => void;
-}
-
-export function Dashboard({ onLogout }: DashboardProps) {
+export function Dashboard() {
   const [online, setOnline] = useState<boolean | null>(null);
   const [stats, setStats] = useState<TargetStats | null>(null);
   const [busyAction, setBusyAction] = useState<"wake" | "shutdown" | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  const handleAuthError = useCallback(
-    (err: unknown) => {
-      if (err instanceof ApiError && err.status === 401) {
-        onLogout();
-        return true;
-      }
-      return false;
-    },
-    [onLogout],
-  );
 
   useEffect(() => {
     let cancelled = false;
@@ -36,8 +21,8 @@ export function Dashboard({ onLogout }: DashboardProps) {
       try {
         const result = await getPowerStatus();
         if (!cancelled) setOnline(result.online);
-      } catch (err) {
-        if (!handleAuthError(err) && !cancelled) setOnline(null);
+      } catch {
+        if (!cancelled) setOnline(null);
       }
     }
 
@@ -47,7 +32,7 @@ export function Dashboard({ onLogout }: DashboardProps) {
       cancelled = true;
       clearInterval(id);
     };
-  }, [handleAuthError]);
+  }, []);
 
   useEffect(() => {
     if (!online) {
@@ -61,8 +46,8 @@ export function Dashboard({ onLogout }: DashboardProps) {
       try {
         const result = await getStats();
         if (!cancelled) setStats(result);
-      } catch (err) {
-        handleAuthError(err);
+      } catch {
+        // transient stats failures aren't worth surfacing; next poll retries
       }
     }
 
@@ -72,7 +57,7 @@ export function Dashboard({ onLogout }: DashboardProps) {
       cancelled = true;
       clearInterval(id);
     };
-  }, [online, handleAuthError]);
+  }, [online]);
 
   async function handleWake() {
     setError(null);
@@ -80,9 +65,7 @@ export function Dashboard({ onLogout }: DashboardProps) {
     try {
       await wakeServer();
     } catch (err) {
-      if (!handleAuthError(err)) {
-        setError(err instanceof ApiError ? err.message : "Failed to wake server");
-      }
+      setError(err instanceof ApiError ? err.message : "Failed to wake server");
     } finally {
       setBusyAction(null);
     }
@@ -95,9 +78,7 @@ export function Dashboard({ onLogout }: DashboardProps) {
     try {
       await shutdownServer();
     } catch (err) {
-      if (!handleAuthError(err)) {
-        setError(err instanceof ApiError ? err.message : "Failed to shut down server");
-      }
+      setError(err instanceof ApiError ? err.message : "Failed to shut down server");
     } finally {
       setBusyAction(null);
     }
@@ -107,20 +88,11 @@ export function Dashboard({ onLogout }: DashboardProps) {
 
   return (
     <div className="mx-auto min-h-screen max-w-2xl px-4 py-8">
-      <header className="mb-8 flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-slate-100">Server Control</h1>
-          <div className="mt-1">
-            <StatusBadge online={online} />
-          </div>
+      <header className="mb-8">
+        <h1 className="text-xl font-semibold text-slate-100">Server Control</h1>
+        <div className="mt-1">
+          <StatusBadge online={online} />
         </div>
-        <button
-          type="button"
-          onClick={onLogout}
-          className="text-sm text-slate-400 underline-offset-4 hover:text-slate-200 hover:underline"
-        >
-          Log out
-        </button>
       </header>
 
       <div className="mb-8 grid grid-cols-2 gap-4">
@@ -144,14 +116,23 @@ export function Dashboard({ onLogout }: DashboardProps) {
               percent={memoryPercent}
               detail={`${formatBytes(stats.memory.used)} / ${formatBytes(stats.memory.total)}`}
             />
-            {stats.disks.map((disk) => (
-              <GaugeCard
-                key={disk.path}
-                label={disk.path === "/" ? "Disk" : disk.path}
-                percent={(disk.used / disk.size) * 100}
-                detail={`${formatBytes(disk.used)} / ${formatBytes(disk.size)}`}
-              />
-            ))}
+            {stats.disks.map((disk) =>
+              disk.mounted ? (
+                <GaugeCard
+                  key={disk.device}
+                  label={disk.device}
+                  percent={(disk.usedBytes / disk.sizeBytes) * 100}
+                  detail={`${formatBytes(disk.usedBytes)} / ${formatBytes(disk.sizeBytes)}${disk.model ? ` · ${disk.model}` : ""}`}
+                />
+              ) : (
+                <GaugeCard
+                  key={disk.device}
+                  label={disk.device}
+                  percent={0}
+                  detail={`Not mounted · ${formatBytes(disk.sizeBytes)}${disk.model ? ` · ${disk.model}` : ""}`}
+                />
+              ),
+            )}
           </div>
           <p className="text-center text-sm text-slate-500">Uptime: {formatUptime(stats.uptimeSeconds)}</p>
         </>
