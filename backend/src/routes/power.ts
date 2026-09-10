@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { config } from "../config.js";
-import { getPowerPhase, shutdownTarget } from "../lib/ssh.js";
+import { getBootLog, getJournalPage, getPowerPhase, shutdownTarget } from "../lib/ssh.js";
 import { sendMagicPacket } from "../lib/wol.js";
 import { logger } from "../lib/logger.js";
 
@@ -9,6 +9,27 @@ export const powerRouter = Router();
 powerRouter.get("/status", async (_req, res) => {
   const phase = await getPowerPhase();
   res.json({ phase });
+});
+
+powerRouter.get("/boot-log", async (_req, res) => {
+  try {
+    const lines = await getBootLog();
+    res.json({ lines });
+  } catch (err) {
+    logger.error("Failed to fetch boot log", err);
+    res.status(502).json({ error: "Failed to fetch boot log" });
+  }
+});
+
+powerRouter.get("/shutdown-log", async (req, res) => {
+  try {
+    const cursor = typeof req.query.cursor === "string" ? req.query.cursor : undefined;
+    const page = await getJournalPage(cursor);
+    res.json(page);
+  } catch (err) {
+    logger.error("Failed to fetch shutdown log", err);
+    res.status(502).json({ error: "Failed to fetch shutdown log" });
+  }
 });
 
 powerRouter.post("/wake", async (_req, res) => {

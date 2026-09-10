@@ -84,3 +84,89 @@ export async function getTargetStats(): Promise<TargetStats> {
     return JSON.parse(result.stdout) as TargetStats;
   });
 }
+
+/** The complete systemd/kernel journal for the current boot — fetched once
+ * SSH is reachable, since there's no way to see anything before that without
+ * extra hardware (a serial console tap). */
+export async function getBootLog(): Promise<string[]> {
+  return withConnection(async (ssh) => {
+    const result = await ssh.execCommand("journalctl -b -q --no-pager -o short-iso -n 300");
+    if (result.code !== 0) {
+      throw new Error(`journalctl failed: ${result.stderr || result.stdout}`);
+    }
+    return result.stdout.split("\n").filter((line) => line.trim().length > 0);
+  });
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+export interface JournalPage {
+  lines: string[];
+  cursor: string | null;
+}
+
+// A fresh SSH connection logs its own "session opened/closed" lines to the
+// journal. Polling every ~1s for a shutdown-log with a brand-new connection
+// each time would flood the log with that noise instead of the actual
+// shutdown sequence, so this reuses one connection across an entire polling
+// run (started fresh whenever the frontend asks without a cursor, i.e. the
+// start of a new shutdown) instead of one-shot `withConnection`.
+let journalConnection: NodeSSH | null = null;
+
+function releaseJournalConnection(): void {
+  journalConnection?.dispose();
+  journalConnection = null;
+}
+
+async function getJournalConnection(): Promise<NodeSSH> {
+  if (journalConnection) return journalConnection;
+  const ssh = new NodeSSH();
+  await ssh.connect({
+    host: config.target.host,
+    port: config.target.sshPort,
+    username: config.target.sshUser,
+    privateKey: privateKey(),
+    readyTimeout: CONNECT_TIMEOUT_MS,
+  });
+  journalConnection = ssh;
+  return ssh;
+}
+
+/**
+ * Incremental journal tail, used to live-stream shutdown progress (the
+ * server stays fully reachable right up until it actually powers off, so
+ * this works all the way to the end unlike boot). Pass back the returned
+ * cursor to get only lines added since the last call; omit it to start a
+ * fresh polling run (e.g. a new shutdown, or the page was reloaded).
+ */
+export async function getJournalPage(afterCursor?: string): Promise<JournalPage> {
+  if (!afterCursor) releaseJournalConnection();
+
+  try {
+    const ssh = await getJournalConnection();
+    const selector = afterCursor ? `--after-cursor=${shellQuote(afterCursor)}` : "-n 10";
+    const result = await ssh.execCommand(`journalctl -q --no-pager -o short-iso --show-cursor ${selector}`);
+    if (result.code !== 0) {
+      throw new Error(`journalctl failed: ${result.stderr || result.stdout}`);
+    }
+
+    const lines: string[] = [];
+    let cursor: string | null = null;
+    for (const raw of result.stdout.split("\n")) {
+      const line = raw.trimEnd();
+      if (!line) continue;
+      const match = line.match(/^-- cursor: (.+)$/);
+      if (match) {
+        cursor = match[1];
+      } else {
+        lines.push(line);
+      }
+    }
+    return { lines, cursor };
+  } catch (err) {
+    releaseJournalConnection();
+    throw err;
+  }
+}

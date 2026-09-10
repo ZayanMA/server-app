@@ -55,3 +55,17 @@ export interface TargetStats {
 export function getStats(): Promise<TargetStats> {
   return request("/stats");
 }
+
+export function getBootLog(): Promise<{ lines: string[] }> {
+  return request("/power/boot-log");
+}
+
+export interface JournalPage {
+  lines: string[];
+  cursor: string | null;
+}
+
+export function getShutdownLog(cursor: string | null): Promise<JournalPage> {
+  const qs = cursor ? `?cursor=${encodeURIComponent(cursor)}` : "";
+  return request(`/power/shutdown-log${qs}`);
+}

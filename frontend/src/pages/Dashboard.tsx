@@ -1,9 +1,20 @@
-import { AlertTriangle, Clock, Cpu, MemoryStick } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronUp, Clock, Cpu, MemoryStick } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { ApiError, getPowerStatus, getStats, shutdownServer, wakeServer, type PowerPhase, type TargetStats } from "../api";
+import {
+  ApiError,
+  getBootLog,
+  getPowerStatus,
+  getShutdownLog,
+  getStats,
+  shutdownServer,
+  wakeServer,
+  type PowerPhase,
+  type TargetStats,
+} from "../api";
 import { BootProgress } from "../components/BootProgress";
 import { DiskRow } from "../components/DiskRow";
 import { GaugeCard } from "../components/GaugeCard";
+import { LogPanel } from "../components/LogPanel";
 import { PowerButton } from "../components/PowerButton";
 import { ShutdownProgress } from "../components/ShutdownProgress";
 import { StatusBadge } from "../components/StatusBadge";
@@ -14,12 +25,17 @@ import { formatBytes, formatUptime } from "../format";
 const ACTIVE_POLL_MS = 1500;
 const IDLE_POLL_MS = 5000;
 const STATS_POLL_MS = 5000;
+const SHUTDOWN_LOG_POLL_MS = 1200;
 
 export function Dashboard() {
   const [phase, setPhase] = useState<PowerPhase | null>(null);
   const [stats, setStats] = useState<TargetStats | null>(null);
   const [busyAction, setBusyAction] = useState<"wake" | "shutdown" | null>(null);
   const [shuttingDown, setShuttingDownState] = useState(false);
+  const [shutdownLog, setShutdownLog] = useState<string[]>([]);
+  const [bootLogOpen, setBootLogOpen] = useState(false);
+  const [bootLog, setBootLog] = useState<string[] | null>(null);
+  const [bootLogLoading, setBootLogLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const shuttingDownRef = useRef(false);
 
@@ -84,6 +100,53 @@ export function Dashboard() {
     };
   }, [online]);
 
+  useEffect(() => {
+    if (!shuttingDown) {
+      setShutdownLog([]);
+      return;
+    }
+
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    let cursor: string | null = null;
+
+    async function poll() {
+      try {
+        const page = await getShutdownLog(cursor);
+        if (cancelled) return;
+        cursor = page.cursor ?? cursor;
+        if (page.lines.length > 0) setShutdownLog((prev) => [...prev, ...page.lines]);
+        timer = setTimeout(poll, SHUTDOWN_LOG_POLL_MS);
+      } catch {
+        // SSH almost certainly just went away because the server powered
+        // off — the phase poll will pick that up and clear shuttingDown.
+      }
+    }
+
+    poll();
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [shuttingDown]);
+
+  async function handleToggleBootLog() {
+    if (bootLogOpen) {
+      setBootLogOpen(false);
+      return;
+    }
+    setBootLogOpen(true);
+    setBootLogLoading(true);
+    try {
+      const result = await getBootLog();
+      setBootLog(result.lines);
+    } catch {
+      setBootLog([]);
+    } finally {
+      setBootLogLoading(false);
+    }
+  }
+
   async function handleWake() {
     setError(null);
     setBusyAction("wake");
@@ -146,7 +209,7 @@ export function Dashboard() {
         </div>
       )}
 
-      {online && shuttingDown && <ShutdownProgress />}
+      {online && shuttingDown && <ShutdownProgress log={shutdownLog} />}
 
       {online && !shuttingDown && stats && (
         <div className="animate-fade-in flex flex-col gap-6">
@@ -190,6 +253,22 @@ export function Dashboard() {
             <Clock className="h-3.5 w-3.5" />
             Up {formatUptime(stats.uptimeSeconds)}
           </p>
+
+          <div>
+            <button
+              type="button"
+              onClick={handleToggleBootLog}
+              className="mx-auto flex items-center gap-1 text-xs text-slate-500 hover:text-slate-300"
+            >
+              {bootLogOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+              {bootLogOpen ? "Hide boot log" : "View boot log"}
+            </button>
+            {bootLogOpen && (
+              <div className="mt-2">
+                <LogPanel lines={bootLogLoading ? [] : (bootLog ?? [])} emptyText={bootLogLoading ? "Loading…" : "No log entries."} />
+              </div>
+            )}
+          </div>
         </div>
       )}
 
