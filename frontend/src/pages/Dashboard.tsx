@@ -1,6 +1,7 @@
-import { AlertTriangle, Clock, Cpu, HardDrive, MemoryStick, ServerOff } from "lucide-react";
+import { AlertTriangle, Clock, Cpu, MemoryStick, ServerOff } from "lucide-react";
 import { useEffect, useState } from "react";
 import { ApiError, getPowerStatus, getStats, shutdownServer, wakeServer, type TargetStats } from "../api";
+import { DiskRow } from "../components/DiskRow";
 import { GaugeCard } from "../components/GaugeCard";
 import { PowerButton } from "../components/PowerButton";
 import { StatusBadge } from "../components/StatusBadge";
@@ -87,6 +88,10 @@ export function Dashboard() {
 
   const memoryPercent = stats ? (stats.memory.used / stats.memory.total) * 100 : 0;
 
+  const totalDiskSize = stats?.disks.reduce((sum, disk) => sum + disk.sizeBytes, 0) ?? 0;
+  const totalDiskUsed = stats?.disks.reduce((sum, disk) => sum + (disk.mounted ? disk.usedBytes : 0), 0) ?? 0;
+  const totalDiskPercent = totalDiskSize > 0 ? (totalDiskUsed / totalDiskSize) * 100 : 0;
+
   return (
     <div className="mx-auto min-h-screen max-w-2xl px-4 pb-12 pt-[max(2rem,env(safe-area-inset-top))]">
       <header className="mb-8 flex items-center justify-between">
@@ -118,30 +123,43 @@ export function Dashboard() {
       )}
 
       {online && stats && (
-        <div className="animate-fade-in">
-          <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
-            <GaugeCard icon={Cpu} label="CPU" percent={stats.cpuPercent} detail={`${stats.cpuPercent}% used`} />
-            <GaugeCard
-              icon={MemoryStick}
-              label="Memory"
-              percent={memoryPercent}
-              detail={`${formatBytes(stats.memory.used)} / ${formatBytes(stats.memory.total)}`}
-            />
-            {stats.disks.map((disk) => (
+        <div className="animate-fade-in flex flex-col gap-6">
+          <section>
+            <h2 className="mb-3 px-1 text-xs font-semibold uppercase tracking-wider text-slate-500">System</h2>
+            <div className="grid grid-cols-2 gap-3">
+              <GaugeCard icon={Cpu} label="CPU" percent={stats.cpuPercent} detail={`${stats.cpuPercent}% used`} />
               <GaugeCard
-                key={disk.device}
-                icon={HardDrive}
-                label={disk.device}
-                percent={disk.mounted ? (disk.usedBytes / disk.sizeBytes) * 100 : 0}
-                muted={!disk.mounted}
-                detail={
-                  disk.mounted
-                    ? `${formatBytes(disk.usedBytes)} / ${formatBytes(disk.sizeBytes)}`
-                    : `Not mounted · ${formatBytes(disk.sizeBytes)}`
-                }
+                icon={MemoryStick}
+                label="Memory"
+                percent={memoryPercent}
+                detail={`${formatBytes(stats.memory.used)} / ${formatBytes(stats.memory.total)}`}
               />
-            ))}
-          </div>
+            </div>
+          </section>
+
+          <section>
+            <h2 className="mb-3 px-1 text-xs font-semibold uppercase tracking-wider text-slate-500">Storage</h2>
+            <div className="flex flex-col gap-1.5 rounded-2xl border border-white/[0.06] bg-white/[0.03] p-2">
+              <DiskRow
+                label="Total"
+                percent={totalDiskPercent}
+                rightText={`${formatBytes(totalDiskUsed)} / ${formatBytes(totalDiskSize)}`}
+                total
+              />
+              <div className="mx-2 h-px bg-white/[0.06]" />
+              {stats.disks.map((disk) => (
+                <DiskRow
+                  key={disk.device}
+                  label={disk.device}
+                  sublabel={disk.model}
+                  percent={disk.mounted ? (disk.usedBytes / disk.sizeBytes) * 100 : 0}
+                  muted={!disk.mounted}
+                  rightText={disk.mounted ? `${formatBytes(disk.usedBytes)} / ${formatBytes(disk.sizeBytes)}` : formatBytes(disk.sizeBytes)}
+                />
+              ))}
+            </div>
+          </section>
+
           <p className="flex items-center justify-center gap-1.5 text-xs text-slate-500">
             <Clock className="h-3.5 w-3.5" />
             Up {formatUptime(stats.uptimeSeconds)}
