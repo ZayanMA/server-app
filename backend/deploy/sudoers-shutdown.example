@@ -1,0 +1,12 @@
+# On the TARGET server: allows the SSH user the Pi connects as to run
+# `shutdown` without a password prompt, without granting broader sudo access.
+#
+# Install with:
+#   sudo visudo -f /etc/sudoers.d/server-app-shutdown
+# (paste the line below, replacing pi-remote with TARGET_SSH_USER)
+
+pi-remote ALL=(root) NOPASSWD: /sbin/shutdown -h now
+
+# Some distros (Debian/Ubuntu with usrmerge) symlink /sbin -> /usr/sbin, in
+# which case `which shutdown` on the target will tell you the real path to
+# use above instead.

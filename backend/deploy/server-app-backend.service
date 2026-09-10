@@ -1,0 +1,16 @@
+[Unit]
+Description=server-app backend
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/opt/server-app/backend
+EnvironmentFile=/opt/server-app/backend/.env
+ExecStart=/usr/bin/node /opt/server-app/backend/dist/index.js
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
