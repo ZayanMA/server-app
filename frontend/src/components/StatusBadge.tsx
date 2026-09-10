@@ -1,42 +1,54 @@
 import { Loader2, Power, PowerOff } from "lucide-react";
+import type { ReactNode } from "react";
+import type { PowerPhase } from "../api";
 
 interface StatusBadgeProps {
-  online: boolean | null;
+  phase: PowerPhase | null;
+  shuttingDown: boolean;
 }
 
-export function StatusBadge({ online }: StatusBadgeProps) {
-  if (online === null) {
-    return (
-      <span className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.06] bg-white/[0.03] px-3 py-1 text-xs font-medium text-slate-400">
-        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-        Checking
-      </span>
-    );
-  }
+function Badge({
+  tone,
+  icon,
+  label,
+}: {
+  tone: "emerald" | "sky" | "red" | "slate";
+  icon: ReactNode;
+  label: string;
+}) {
+  const toneClasses =
+    tone === "emerald"
+      ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
+      : tone === "sky"
+        ? "border-sky-500/20 bg-sky-500/10 text-sky-400"
+        : tone === "red"
+          ? "border-red-500/20 bg-red-500/10 text-red-400"
+          : "border-white/[0.06] bg-white/[0.03] text-slate-400";
 
   return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium ${
-        online
-          ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
-          : "border-white/[0.06] bg-white/[0.03] text-slate-400"
-      }`}
-    >
-      <span className="relative flex h-2 w-2">
-        {online && (
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-        )}
-        <span className={`relative inline-flex h-2 w-2 rounded-full ${online ? "bg-emerald-400" : "bg-slate-500"}`} />
-      </span>
-      {online ? (
-        <>
-          <Power className="h-3.5 w-3.5" /> Online
-        </>
-      ) : (
-        <>
-          <PowerOff className="h-3.5 w-3.5" /> Offline
-        </>
-      )}
+    <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium ${toneClasses}`}>
+      {icon}
+      {label}
     </span>
   );
+}
+
+export function StatusBadge({ phase, shuttingDown }: StatusBadgeProps) {
+  if (phase === null) {
+    return <Badge tone="slate" icon={<Loader2 className="h-3.5 w-3.5 animate-spin" />} label="Checking" />;
+  }
+
+  if (shuttingDown) {
+    return <Badge tone="red" icon={<Loader2 className="h-3.5 w-3.5 animate-spin" />} label="Shutting Down" />;
+  }
+
+  if (phase === "online") {
+    return <Badge tone="emerald" icon={<Power className="h-3.5 w-3.5" />} label="Online" />;
+  }
+
+  if (phase === "booting" || phase === "starting") {
+    return <Badge tone="sky" icon={<Loader2 className="h-3.5 w-3.5 animate-spin" />} label="Waking Up" />;
+  }
+
+  return <Badge tone="slate" icon={<PowerOff className="h-3.5 w-3.5" />} label="Offline" />;
 }

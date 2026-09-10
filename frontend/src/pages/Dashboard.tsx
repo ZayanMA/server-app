@@ -1,10 +1,11 @@
 import { AlertTriangle, Clock, Cpu, MemoryStick } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ApiError, getPowerStatus, getStats, shutdownServer, wakeServer, type PowerPhase, type TargetStats } from "../api";
 import { BootProgress } from "../components/BootProgress";
 import { DiskRow } from "../components/DiskRow";
 import { GaugeCard } from "../components/GaugeCard";
 import { PowerButton } from "../components/PowerButton";
+import { ShutdownProgress } from "../components/ShutdownProgress";
 import { StatusBadge } from "../components/StatusBadge";
 import { formatBytes, formatUptime } from "../format";
 
@@ -18,7 +19,14 @@ export function Dashboard() {
   const [phase, setPhase] = useState<PowerPhase | null>(null);
   const [stats, setStats] = useState<TargetStats | null>(null);
   const [busyAction, setBusyAction] = useState<"wake" | "shutdown" | null>(null);
+  const [shuttingDown, setShuttingDownState] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const shuttingDownRef = useRef(false);
+
+  function setShuttingDown(value: boolean) {
+    shuttingDownRef.current = value;
+    setShuttingDownState(value);
+  }
 
   const online = phase === "online";
 
@@ -31,7 +39,11 @@ export function Dashboard() {
         const result = await getPowerStatus();
         if (cancelled) return;
         setPhase(result.phase);
-        const delay = result.phase === "booting" || result.phase === "starting" ? ACTIVE_POLL_MS : IDLE_POLL_MS;
+        if (result.phase === "offline") setShuttingDown(false);
+        const delay =
+          result.phase === "booting" || result.phase === "starting" || shuttingDownRef.current
+            ? ACTIVE_POLL_MS
+            : IDLE_POLL_MS;
         timer = setTimeout(poll, delay);
       } catch {
         if (cancelled) return;
@@ -90,6 +102,7 @@ export function Dashboard() {
     setBusyAction("shutdown");
     try {
       await shutdownServer();
+      setShuttingDown(true);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to shut down server");
     } finally {
@@ -111,7 +124,7 @@ export function Dashboard() {
             Server Control
           </h1>
           <div className="mt-2">
-            <StatusBadge online={phase === null ? null : online} />
+            <StatusBadge phase={phase} shuttingDown={shuttingDown} />
           </div>
         </div>
       </header>
@@ -120,7 +133,7 @@ export function Dashboard() {
         <PowerButton action="wake" disabled={online} busy={busyAction === "wake"} onClick={handleWake} />
         <PowerButton
           action="shutdown"
-          disabled={!online}
+          disabled={!online || shuttingDown}
           busy={busyAction === "shutdown"}
           onClick={handleShutdown}
         />
@@ -133,7 +146,9 @@ export function Dashboard() {
         </div>
       )}
 
-      {online && stats && (
+      {online && shuttingDown && <ShutdownProgress />}
+
+      {online && !shuttingDown && stats && (
         <div className="animate-fade-in flex flex-col gap-6">
           <section>
             <h2 className="mb-3 px-1 text-xs font-semibold uppercase tracking-wider text-slate-500">System</h2>
